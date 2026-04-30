@@ -67,6 +67,7 @@ export const WebsitesPage = () => {
       await dbService.setDocument('websites', newSite.id, newSite);
       setFormData({ name: '', url: '', user: '', pass: '' });
       setIsAdding(false);
+      alert("WP Node Integrated Successfully!");
     } catch (err: any) {
       setError(err.message || "Failed to connect to WordPress");
     } finally {

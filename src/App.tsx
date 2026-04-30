@@ -81,6 +81,11 @@ export default function App() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    // Attempt silent anonymous login for Firestore permissions
+    signInAnonymously(auth).catch((err) => {
+      console.warn("Cloud Sync Limited:", err.message);
+    });
+
     const localAuth = localStorage.getItem('app_authorized');
     if (localAuth === 'true') {
       setIsAuthorized(true);

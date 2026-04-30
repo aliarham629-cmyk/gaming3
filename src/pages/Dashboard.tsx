@@ -21,23 +21,35 @@ export const DashboardPage = () => {
       .then(data => setHasSystemKey(data.hasSystemKey))
       .catch(() => setHasSystemKey(false));
 
-    // Load from Firestore
-    const unsubscribeArticles = dbService.subscribe('articles', (savedArticles) => {
-      setRecentArticles(savedArticles.slice(0, 5));
-      
-      dbService.getCollection('websites').then(savedSites => {
-        dbService.getCollection('apiKeys').then(savedKeys => {
-          setStats({
-            totalKeywords: savedArticles.length,
-            articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
-            connectedSites: savedSites?.length || 0,
-            activeApiKeys: savedKeys?.filter((k: any) => k.status === 'active').length || 0,
-          });
-        });
-      });
+    // Separate subscriptions for better reliability
+    const unsubArticles = dbService.subscribe('articles', (articles) => {
+      setRecentArticles(articles.slice(0, 5));
+      setStats(prev => ({
+        ...prev,
+        totalKeywords: articles.length,
+        articlesPublished: articles.filter((a: any) => a.status === 'published').length
+      }));
     });
 
-    return () => unsubscribeArticles();
+    const unsubWebsites = dbService.subscribe('websites', (sites) => {
+      setStats(prev => ({
+        ...prev,
+        connectedSites: sites.length
+      }));
+    });
+
+    const unsubKeys = dbService.subscribe('apiKeys', (keys) => {
+      setStats(prev => ({
+        ...prev,
+        activeApiKeys: keys.filter((k: any) => k.status === 'active').length
+      }));
+    });
+
+    return () => {
+      unsubArticles();
+      unsubWebsites();
+      unsubKeys();
+    };
   }, []);
 
   return (

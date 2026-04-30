@@ -31,17 +31,26 @@ interface FirestoreErrorInfo {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const message = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
     },
     operationType,
     path
+  };
+  
+  console.error('Firestore Error Details: ', JSON.stringify(errInfo));
+  
+  // Create a user-friendly message
+  let userMessage = message;
+  if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
+    userMessage = `SECURE SYNC DENIED: Authentication required for ${operationType} on ${path}. Please ensure Cloud Sync is active.`;
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  
+  throw new Error(userMessage);
 }
 
 export const dbService = {
