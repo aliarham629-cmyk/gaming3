@@ -154,7 +154,7 @@ export const DashboardPage = () => {
               </div>
               <div className="w-full h-[1px] bg-white/10"></div>
               <p className="text-[9px] text-white/20 leading-relaxed font-bold italic tracking-tighter">
-                GCAIP V2.04B System Running Local Deployment. High Performance SEO Extraction Module Active.
+                GAMING AI V2.04B System Running Local Deployment. High Performance SEO Extraction Module Active.
               </p>
             </div>
           </div>
@@ -162,7 +162,7 @@ export const DashboardPage = () => {
 
         {/* FOOTER DATA */}
         <div className="mt-auto flex justify-between items-center text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">
-          <div>GCAIP SYSTEM V.2.04B</div>
+          <div>GAMING AI SYSTEM V.2.04B</div>
           <div>DATABASE CONNECTION: STABLE [FIRESTORE]</div>
           <div>LOCAL TIME: {new Date().toLocaleTimeString()}</div>
         </div>

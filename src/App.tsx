@@ -33,7 +33,7 @@ const Navbar = ({ user }: { user: User }) => {
     <aside className="w-64 border-r border-white/10 flex flex-col p-6 h-screen sticky top-0 bg-dark-bg">
       <div className="mb-12">
         <h1 className="text-2xl font-black italic tracking-tighter">
-          GCAIP<span className="text-primary">.AI</span>
+          GAMING<span className="text-primary"> AI</span>
         </h1>
         <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold">
           Publisher Command Center
@@ -93,7 +93,7 @@ const Login = () => {
     <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4 overflow-hidden relative">
       {/* Watermark Decoration */}
       <div className="absolute -bottom-20 -right-20 text-[200px] font-black text-white/[0.02] pointer-events-none select-none uppercase italic">
-        GCAIP
+        GAMING AI
       </div>
 
       <motion.div 
@@ -108,7 +108,7 @@ const Login = () => {
             </div>
           </div>
           <h1 className="text-4xl font-black italic tracking-tighter mb-2">
-            GCAIP<span className="text-primary">.AI</span>
+            GAMING<span className="text-primary"> AI</span>
           </h1>
           <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] font-bold">
             High Performance Publisher
@@ -179,7 +179,7 @@ export default function App() {
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-8 h-8 text-primary animate-pulse" />
             <h1 className="text-4xl font-black italic tracking-tighter">
-              GCAIP<span className="text-primary">.AI</span>
+              GAMING<span className="text-primary"> AI</span>
             </h1>
           </div>
           <div className="flex flex-col items-center gap-2">
