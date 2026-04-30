@@ -4,12 +4,14 @@ import { Zap, Play, Loader2, AlertCircle, CheckCircle2, History } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { generateAndPublish } from '../lib/generator';
+import { dbService } from '../lib/db';
 
 export const KeywordsPage = () => {
   const [keywords, setKeywords] = useState('');
   const [sites, setSites] = useState<WPWebsite[]>([]);
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState('');
+  const [selectedLanguage, setSelectedLanguage] = useState('English US');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [logs, setLogs] = useState<string[]>([]);
@@ -21,13 +23,13 @@ export const KeywordsPage = () => {
     const savedKeywords = localStorage.getItem('last_keywords');
     if (savedKeywords) setKeywords(savedKeywords);
 
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => {
-        setSites(data.websites || []);
-        setApiKeys(data.apiKeys || []);
-      })
-      .catch(err => console.error("Failed to load setup context:", err));
+    const unsubWebsites = dbService.subscribe('websites', (data) => setSites(data));
+    const unsubKeys = dbService.subscribe('apiKeys', (data) => setApiKeys(data));
+    
+    return () => {
+      unsubWebsites();
+      unsubKeys();
+    };
   }, []);
 
   const onKeywordsChange = (val: string) => {
@@ -89,19 +91,19 @@ export const KeywordsPage = () => {
             keyword,
             siteUrl: selectedSite.siteUrl,
             siteUser: selectedSite.username,
-            sitePass: selectedSite.appPassword
+            sitePass: selectedSite.appPassword,
+            language: selectedLanguage
           });
           addLog(`SUCCESS: Published "${keyword}"`);
 
           if (apiKey.id !== 'system-default') {
-            const db = await fetch('/api/db').then(res => res.json());
-            db.apiKeys = db.apiKeys.map((k: any) => k.id === apiKey.id ? { ...k, usageCount: (k.usageCount || 0) + 1 } : k);
-            await fetch('/api/db', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(db)
-            });
-            setApiKeys(db.apiKeys);
+            const currentKey = apiKeys.find(k => k.id === apiKey.id);
+            if (currentKey) {
+              await dbService.setDocument('apiKeys', apiKey.id!, {
+                ...currentKey,
+                usageCount: (currentKey.usageCount || 0) + 1
+              });
+            }
           }
 
         } catch (err: any) {
@@ -216,6 +218,20 @@ export const KeywordsPage = () => {
                   <option value="" className="bg-dark-card">-- Select Destination --</option>
                   {sites.map(s => (
                     <option key={s.id} value={s.id} className="bg-dark-card">{s.name.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-primary mb-3">Generation Language</label>
+                <select
+                  value={selectedLanguage}
+                  onChange={e => setSelectedLanguage(e.target.value)}
+                  disabled={isProcessing}
+                  className="w-full bg-black/40 px-4 py-3 rounded border border-white/10 text-xs font-bold focus:outline-none focus:border-primary transition-all appearance-none text-white tracking-tight"
+                >
+                  {['English US', 'German', 'French', 'Turkish', 'Urdu', 'Netherlands'].map(lang => (
+                    <option key={lang} value={lang} className="bg-dark-card">{lang.toUpperCase()}</option>
                   ))}
                 </select>
               </div>

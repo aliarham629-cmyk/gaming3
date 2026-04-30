@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Zap, ArrowUpRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
+import { dbService } from '../lib/db';
 
 export const DashboardPage = () => {
   const [stats, setStats] = useState({
@@ -20,27 +21,23 @@ export const DashboardPage = () => {
       .then(data => setHasSystemKey(data.hasSystemKey))
       .catch(() => setHasSystemKey(false));
 
-    // Load from server database
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => {
-        const savedArticles = data.articles || [];
-        const savedSites = data.websites || [];
-        const savedKeys = data.apiKeys || [];
-
-        setStats({
-          totalKeywords: savedArticles.length,
-          articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
-          connectedSites: savedSites.length,
-          activeApiKeys: savedKeys.filter((k: any) => k.status === 'active').length,
+    // Load from Firestore
+    const unsubscribeArticles = dbService.subscribe('articles', (savedArticles) => {
+      setRecentArticles(savedArticles.slice(0, 5));
+      
+      dbService.getCollection('websites').then(savedSites => {
+        dbService.getCollection('apiKeys').then(savedKeys => {
+          setStats({
+            totalKeywords: savedArticles.length,
+            articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
+            connectedSites: savedSites?.length || 0,
+            activeApiKeys: savedKeys?.filter((k: any) => k.status === 'active').length || 0,
+          });
         });
+      });
+    });
 
-        setRecentArticles(savedArticles
-          .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
-          .slice(0, 5)
-        );
-      })
-      .catch(err => console.error("Failed to load dashboard data:", err));
+    return () => unsubscribeArticles();
   }, []);
 
   return (
@@ -147,7 +144,7 @@ export const DashboardPage = () => {
         {/* FOOTER DATA */}
         <div className="mt-auto flex justify-between items-center text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">
           <div>GAMING AI SYSTEM V.2.04B</div>
-          <div>DATABASE CONNECTION: LOCAL_STORAGE</div>
+          <div>DATABASE CONNECTION: CLOUD_FIRESTORE</div>
           <div>LOCAL TIME: {new Date().toLocaleTimeString()}</div>
         </div>
       </div>

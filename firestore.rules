@@ -1,0 +1,32 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Since the app uses a simple password, and AIS creates an anonymous-ish or Google auth session,
+    // we'll allow access if signed in. Note: AIS usually handles the auth layer.
+    // For this specific app, we'll allow authenticated users to manage their data.
+    
+    match /apiKeys/{keyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /websites/{siteId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /articles/{articleId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

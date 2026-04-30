@@ -39,6 +39,8 @@ export interface Article {
   status: 'draft' | 'published' | 'scheduled' | 'error';
   websiteId: string;
   wpPostId?: string;
+  wpUrl?: string;
+  language?: string;
   batchId: string;
   createdAt: number;
   schemaMarkup?: string;

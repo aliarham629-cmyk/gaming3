@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "ApiKey": {
+      "title": "API Key",
+      "description": "Gemini API keys used for generation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "usageCount": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "key", "name"]
+    },
+    "Website": {
+      "title": "WordPress Website",
+      "description": "WordPress sites for publishing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "siteUrl": { "type": "string" },
+        "username": { "type": "string" },
+        "appPassword": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "siteUrl", "username", "appPassword"]
+    },
+    "Article": {
+      "title": "Article",
+      "description": "Generated and published articles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "keyword": { "type": "string" },
+        "content": { "type": "string" },
+        "status": { "type": "string" },
+        "websiteId": { "type": "string" },
+        "wpPostId": { "type": "string" },
+        "wpPostUrl": { "type": "string" },
+        "language": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title", "keyword", "status"]
+    }
+  },
+  "firestore": {
+    "/apiKeys/{keyId}": {
+      "schema": "ApiKey",
+      "description": "Stored API keys"
+    },
+    "/websites/{siteId}": {
+      "schema": "Website",
+      "description": "Stored WordPress sites"
+    },
+    "/articles/{articleId}": {
+      "schema": "Article",
+      "description": "Stored generated articles"
+    }
+  }
+}

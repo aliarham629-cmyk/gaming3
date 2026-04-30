@@ -3,6 +3,7 @@ import { WPWebsite } from '../types';
 import { Globe, Plus, Trash2, ShieldCheck, Loader2, Link2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { dbService } from '../lib/db';
 
 export const WebsitesPage = () => {
   const [sites, setSites] = useState<WPWebsite[]>([]);
@@ -12,10 +13,8 @@ export const WebsitesPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => setSites(data.websites || []))
-      .catch(err => console.error("DB Load Error:", err));
+    const unsubscribe = dbService.subscribe('websites', (data) => setSites(data));
+    return () => unsubscribe();
   }, []);
 
   const addWebsite = async (e: FormEvent) => {
@@ -63,15 +62,7 @@ export const WebsitesPage = () => {
         createdAt: Date.now()
       };
 
-      const db = await fetch('/api/db').then(res => res.json());
-      db.websites = [...(db.websites || []), newSite];
-      await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(db)
-      });
-
-      setSites(db.websites);
+      await dbService.setDocument('websites', newSite.id, newSite);
       setFormData({ name: '', url: '', user: '', pass: '' });
       setIsAdding(false);
     } catch (err: any) {
@@ -83,14 +74,7 @@ export const WebsitesPage = () => {
 
   const removeSite = async (id: string) => {
     try {
-      const db = await fetch('/api/db').then(res => res.json());
-      db.websites = db.websites.filter((s: any) => s.id !== id);
-      await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(db)
-      });
-      setSites(db.websites);
+      await dbService.deleteDocument('websites', id);
     } catch (err) {
       console.error("Delete Site Error:", err);
     }

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { deleteArticle, bulkDeleteArticles } from '../lib/generator';
+import { dbService } from '../lib/db';
 
 export const HistoryPage = () => {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -29,13 +29,12 @@ export const HistoryPage = () => {
   });
 
   useEffect(() => {
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => {
-        setArticles(data.articles || []);
-        setWebsites(data.websites || []);
-      })
-      .catch(err => console.error("Failed to load history data:", err));
+    const unsubArticles = dbService.subscribe('articles', (data) => setArticles(data));
+    const unsubWebsites = dbService.subscribe('websites', (data) => setWebsites(data));
+    return () => {
+      unsubArticles();
+      unsubWebsites();
+    };
   }, []);
 
   const filteredArticles = useMemo(() => {
@@ -91,14 +90,11 @@ export const HistoryPage = () => {
 
     try {
       if (isSingle) {
-        await deleteArticle(ids[0]);
+        await dbService.deleteDocument('articles', ids[0]);
         setConfirmingId(null);
       } else {
-        await bulkDeleteArticles(ids);
+        await Promise.all(ids.map(id => dbService.deleteDocument('articles', id)));
       }
-      
-      const dbResponse = await fetch('/api/db').then(res => res.json());
-      setArticles(dbResponse.articles || []);
       
       const nextSelected = new Set((Array.from(selectedIds) as string[]).filter(id => !ids.includes(id)));
       setSelectedIds(nextSelected);
@@ -146,20 +142,14 @@ export const HistoryPage = () => {
       if (!response.ok) throw new Error("Publish failed");
       const wpPost = await response.json();
       
-      const db = await fetch('/api/db').then(res => res.json());
-      const updated = db.articles.map((a: any) => a.id === articleId ? {
-        ...a,
-        status: 'published',
+      const updatedArticle = {
+        ...article,
+        status: 'published' as const,
         wpPostId: wpPost.id.toString(),
         wpUrl: wpPost.link
-      } : a);
-      db.articles = updated;
-      await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(db)
-      });
-      setArticles(updated);
+      };
+      
+      await dbService.setDocument('articles', articleId, updatedArticle);
     } catch (err) {
       console.error("Publish error:", err);
     } finally {
@@ -202,14 +192,7 @@ export const HistoryPage = () => {
         metaDescription: manualForm.content.substring(0, 160) + '...',
       } as Article;
 
-      const db = await fetch('/api/db').then(res => res.json());
-      db.articles = [newArticle, ...(db.articles || [])];
-      await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(db)
-      });
-      setArticles(db.articles);
+      await dbService.setDocument('articles', newArticle.id, newArticle);
 
       setIsAddingManual(false);
       setManualForm({ title: '', keyword: '', content: '', status: 'draft', websiteId: '' });
@@ -689,7 +672,7 @@ export const HistoryPage = () => {
            <span>Filter Success Rate: {Math.round((articles.filter(a => a.status === 'published').length / (articles.length || 1)) * 100)}%</span>
            <span>Filtered View: {filteredArticles.length} Nodes</span>
         </div>
-        <div className="italic">Data Sync: [SERVER_STORAGE_ACTIVE]</div>
+        <div className="italic">Data Sync: [CLOUD_FIRESTORE_ACTIVE]</div>
       </div>
     </div>
   );

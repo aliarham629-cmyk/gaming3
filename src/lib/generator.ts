@@ -1,4 +1,7 @@
 import { GoogleGenAI, Type as SchemaType } from "@google/genai";
+import { dbService } from "./db";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "./firebase";
 
 export interface GenerationParams {
   websiteId: string;
@@ -7,39 +10,36 @@ export interface GenerationParams {
   siteUrl: string;
   siteUser: string;
   sitePass: string;
+  language: string;
 }
 
-const getDb = () => fetch('/api/db').then(res => res.json());
-const saveDb = (data: any) => fetch('/api/db', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(data)
-});
-
 export async function generateAndPublish(params: GenerationParams) {
-  const { websiteId, apiKey, keyword, siteUrl, siteUser, sitePass } = params;
+  const { websiteId, apiKey, keyword, siteUrl, siteUser, sitePass, language } = params;
   
   const articleId = Math.random().toString(36).substring(7);
-    const newArticle = {
-      id: articleId,
-      keyword,
-      title: `Processing: ${keyword}`,
-      content: '',
-      status: 'draft',
-      websiteId,
-      createdAt: Date.now(),
-    };
+  const newArticle = {
+    id: articleId,
+    keyword,
+    title: `Processing: ${keyword}`,
+    content: '',
+    status: 'draft',
+    websiteId,
+    createdAt: Date.now(),
+    language
+  };
 
-  const db = await getDb();
-  db.articles.push(newArticle);
-  await saveDb(db);
+  await dbService.setDocument('articles', articleId, newArticle);
 
   const updateArticleLocally = async (id: string, updates: any) => {
-    const currentDb = await getDb();
-    const index = currentDb.articles.findIndex((a: any) => a.id === id);
-    if (index !== -1) {
-      currentDb.articles[index] = { ...currentDb.articles[index], ...updates, updatedAt: Date.now() };
-      await saveDb(currentDb);
+    try {
+      const docRef = doc(db, 'articles', id);
+      const snapshot = await getDoc(docRef);
+      if (snapshot.exists()) {
+        const currentData = snapshot.data();
+        await dbService.setDocument('articles', id, { ...currentData, ...updates, updatedAt: Date.now() });
+      }
+    } catch (err) {
+      console.error("Update local article failed:", err);
     }
   };
 
@@ -76,7 +76,8 @@ export async function generateAndPublish(params: GenerationParams) {
 
     // 1. Generate SEO Data
     const seoDataRaw = await generateWithProxy(
-      `Act as an expert gaming SEO writer. Convert the keyword "${keyword}" into a trending, high-CTR SEO title, meta description, and a URL slug.`,
+      `Act as an expert gaming SEO writer. Convert the keyword "${keyword}" into a trending, high-CTR SEO title, meta description, and a URL slug. 
+      Important: You MUST translate these values into ${language}.`,
       {
         type: SchemaType.OBJECT,
         properties: {
@@ -100,6 +101,7 @@ export async function generateAndPublish(params: GenerationParams) {
       `Act as an expert gaming industry historian and critic. Write a comprehensive, high-quality, and deeply researched article for the title: "${seoData.title}".
       
       CRITICAL REQUIREMENTS:
+      - LANGUAGE: The entire article MUST be written in ${language}.
       - LENGTH: Minimum 1200 words of deep, high-value content.
       - STRUCTURE: Use clear, SEO-optimized H2 and H3 subheadings.
       - MANDATORY SECTIONS: Intro, History, Deep Dive, GEO, Future, FAQ.
@@ -166,13 +168,9 @@ export async function generateAndPublish(params: GenerationParams) {
 }
 
 export async function deleteArticle(articleId: string) {
-  const db = await getDb();
-  db.articles = db.articles.filter((a: any) => a.id !== articleId);
-  await saveDb(db);
+  await dbService.deleteDocument('articles', articleId);
 }
 
 export async function bulkDeleteArticles(articleIds: string[]) {
-  const db = await getDb();
-  db.articles = db.articles.filter((a: any) => !articleIds.includes(a.id));
-  await saveDb(db);
+  await Promise.all(articleIds.map(id => dbService.deleteDocument('articles', id)));
 }

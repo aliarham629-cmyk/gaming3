@@ -4,6 +4,7 @@ import { Key, Plus, Trash2, CheckCircle2, XCircle, Loader2, Info, ExternalLink, 
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from '@google/genai';
+import { dbService } from '../lib/db';
 
 export const APIsPage = () => {
   const [keys, setKeys] = useState<APIKey[]>([]);
@@ -12,10 +13,8 @@ export const APIsPage = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/db')
-      .then(res => res.json())
-      .then(data => setKeys(data.apiKeys || []))
-      .catch(err => console.error("DB Load Error:", err));
+    const unsubscribe = dbService.subscribe('apiKeys', (data) => setKeys(data));
+    return () => unsubscribe();
   }, []);
 
   const testKey = async (key: string) => {
@@ -53,14 +52,7 @@ export const APIsPage = () => {
       };
       
       try {
-        const db = await fetch('/api/db').then(res => res.json());
-        db.apiKeys = [...(db.apiKeys || []), newKeyObj];
-        await fetch('/api/db', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(db)
-        });
-        setKeys(db.apiKeys);
+        await dbService.setDocument('apiKeys', newKeyObj.id, newKeyObj);
         setNewKey('');
         setTestResult(null);
       } catch (err) {
@@ -71,14 +63,7 @@ export const APIsPage = () => {
 
   const removeKey = async (id: string) => {
     try {
-      const db = await fetch('/api/db').then(res => res.json());
-      db.apiKeys = db.apiKeys.filter((k: any) => k.id !== id);
-      await fetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(db)
-      });
-      setKeys(db.apiKeys);
+      await dbService.deleteDocument('apiKeys', id);
     } catch (err) {
       console.error("Delete Error:", err);
     }
