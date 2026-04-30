@@ -17,8 +17,8 @@ export const WebsitesPage = () => {
     return () => unsubscribe();
   }, []);
 
-  const addWebsite = async (e: FormEvent) => {
-    e.preventDefault();
+  const addWebsite = async (e: FormEvent, forceSave: boolean = false) => {
+    if (e) e.preventDefault();
     setIsTesting(true);
     setError('');
 
@@ -28,29 +28,31 @@ export const WebsitesPage = () => {
       if (!url.startsWith('http')) {
         url = 'https://' + url;
       }
-      url = url.replace(/\/$/, "");
+      url = url.replace(/\/+$/, "");
       
-      // Test WP connectivity via backend proxy to bypass CORS
-      const response = await window.fetch("/api/wp/test", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          siteUrl: url,
-          siteUser: formData.user,
-          sitePass: formData.pass
-        })
-      });
+      if (!forceSave) {
+        // Test WP connectivity via backend proxy to bypass CORS
+        const response = await window.fetch("/api/wp/test", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            siteUrl: url,
+            siteUser: formData.user,
+            sitePass: formData.pass
+          })
+        });
 
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error("WP Server returned non-JSON response. Check your URL and Application Password.");
-      }
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error("WP Server returned non-JSON response. Ensure your WordPress URL is correct and REST API is active.");
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error || "WordPress connection failed.");
+        if (!response.ok) {
+          throw new Error(data.error || "WordPress connection failed.");
+        }
       }
 
       const newSite: WPWebsite = {
@@ -158,7 +160,20 @@ export const WebsitesPage = () => {
                 <span>Protocol: WP-REST with Application Password authentication mandated.</span>
               </div>
 
-              {error && <div className="text-xs text-red-500 font-black uppercase tracking-widest bg-red-500/10 p-3 rounded border border-red-500/20">FAIL: {error}</div>}
+              {error && (
+                <div className="flex flex-col gap-3">
+                  <div className="text-xs text-red-500 font-black uppercase tracking-widest bg-red-500/10 p-3 rounded border border-red-500/20 flex items-center justify-between">
+                    <span>FAIL: {error}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addWebsite(null as any, true)}
+                    className="text-[10px] font-black text-primary hover:text-white uppercase tracking-widest self-end underline underline-offset-4"
+                  >
+                    Bypass Check & Save Anyway
+                  </button>
+                </div>
+              )}
 
               <div className="flex justify-end pt-4">
                 <button

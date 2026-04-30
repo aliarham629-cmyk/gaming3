@@ -77,8 +77,6 @@ const Navbar = ({ onLogout }: { onLogout: () => void }) => {
 
 export default function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isFirebaseReady, setIsFirebaseReady] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
 
@@ -86,38 +84,14 @@ export default function App() {
     const localAuth = localStorage.getItem('app_authorized');
     if (localAuth === 'true') {
       setIsAuthorized(true);
-      // Attempt to restore session
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          setIsFirebaseReady(true);
-        } else {
-          // If no user but "authorized" globally, try anonymous
-          signInAnonymously(auth).catch(err => {
-            console.error("Firebase Auth Error:", err);
-            setAuthError(err.message || "Failed to establish secure node connection.");
-          });
-        }
-      });
-      return () => unsubscribe();
-    } else {
-      // Not authorized globally, wait for login
-      setIsFirebaseReady(false);
     }
   }, []);
 
-  const handleAuth = async (e: FormEvent) => {
+  const handleAuth = (e: FormEvent) => {
     e.preventDefault();
     if (password === 'gaming2026') {
-      setAuthError(null);
       localStorage.setItem('app_authorized', 'true');
       setIsAuthorized(true);
-      
-      try {
-        await signInAnonymously(auth);
-      } catch (err: any) {
-        console.error("Firebase Auth Error:", err);
-        setAuthError("CRITICAL: Anonymous Authentication is disabled in your Firebase Console. Please enable it in 'Build > Authentication > Sign-in method'.");
-      }
     } else {
       setError(true);
       setTimeout(() => setError(false), 2000);
@@ -126,10 +100,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('app_authorized');
-    auth.signOut();
     setIsAuthorized(false);
-    setIsFirebaseReady(false);
-    setAuthError(null);
   };
 
   if (!isAuthorized) {
@@ -166,13 +137,6 @@ export default function App() {
               Initialize Portal
             </button>
           </form>
-
-          {authError && (
-            <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider mb-2">Sync protocol Warning</p>
-              <p className="text-[9px] text-red-400 leading-relaxed font-mono opacity-80">Cloud database connection failed. Some features may be restricted until Anonymous Auth is enabled in Firebase Console.</p>
-            </div>
-          )}
 
           <div className="mt-12 pt-8 border-t border-white/5">
             <p className="text-[9px] text-white/20 uppercase font-black tracking-widest">
