@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, FormEvent } from 'react';
-import { db, auth } from '../lib/firebase';
-import { collection, query, onSnapshot, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Article, WPWebsite } from '../types';
 import { 
   FileText, ExternalLink, AlertTriangle, CheckCircle2, Search, Clock, ArrowUpRight, X, 
   Trash2, Send, CheckSquare, Square, Loader2, Globe, FileJson, Zap, Copy, Check, Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, formatDate } from '../lib/utils';
-import { deleteArticle, bulkDeleteArticles, publishToWordPress } from '../lib/generator';
+import { cn } from '../lib/utils';
+import { deleteArticle, bulkDeleteArticles } from '../lib/generator';
 
 export const HistoryPage = () => {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -31,30 +29,11 @@ export const HistoryPage = () => {
   });
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    
-    const unsubArticles = onSnapshot(
-      query(
-        collection(db, 'users', auth.currentUser.uid, 'articles'),
-        orderBy('createdAt', 'desc'),
-        limit(100)
-      ), 
-      (snapshot) => {
-        setArticles(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Article)));
-      }
-    );
+    const savedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
+    setArticles(savedArticles);
 
-    const unsubWebsites = onSnapshot(
-      query(collection(db, 'users', auth.currentUser.uid, 'websites')), 
-      (snapshot) => {
-        setWebsites(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as WPWebsite)));
-      }
-    );
-
-    return () => {
-      unsubArticles();
-      unsubWebsites();
-    };
+    const savedWebsites = JSON.parse(localStorage.getItem('websites') || '[]');
+    setWebsites(savedWebsites);
   }, []);
 
   const filteredArticles = useMemo(() => {
@@ -86,15 +65,13 @@ export const HistoryPage = () => {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const handleDelete = async (ids: string[]) => {
-    if (!auth.currentUser || ids.length === 0) return;
+    if (ids.length === 0) return;
     
-    // For bulk deletes or if confirmingId is already set for the single id
     const isSingle = ids.length === 1;
     const singleId = isSingle ? ids[0] : null;
 
     if (isSingle && confirmingId !== singleId) {
       setConfirmingId(singleId);
-      // Auto-reset confirmation after 3 seconds
       setTimeout(() => setConfirmingId(prev => prev === singleId ? null : prev), 3000);
       return;
     }
@@ -103,7 +80,6 @@ export const HistoryPage = () => {
       return;
     }
 
-    const uid = auth.currentUser.uid;
     setIsProcessing(true);
     setDeletingIds(prev => {
       const next = new Set(prev);
@@ -113,11 +89,14 @@ export const HistoryPage = () => {
 
     try {
       if (isSingle) {
-        await deleteArticle(uid, ids[0]);
+        await deleteArticle(ids[0]);
         setConfirmingId(null);
       } else {
-        await bulkDeleteArticles(uid, ids);
+        await bulkDeleteArticles(ids);
       }
+      
+      const updatedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
+      setArticles(updatedArticles);
       
       const nextSelected = new Set((Array.from(selectedIds) as string[]).filter(id => !ids.includes(id)));
       setSelectedIds(nextSelected);
@@ -127,15 +106,7 @@ export const HistoryPage = () => {
       }
     } catch (err) {
       console.error("Delete operation failed:", err);
-      // More descriptive error if it's a JSON string
-      let errorMessage = "Operation failed. The database might be out of sync. Please refresh.";
-      try {
-        if (err instanceof Error && err.message.startsWith('{')) {
-          const parsed = JSON.parse(err.message);
-          errorMessage = `Delete Failed: ${parsed.error}`;
-        }
-      } catch (e) {}
-      alert(errorMessage);
+      alert("Operation failed. Technical details in console.");
     } finally {
       setIsProcessing(false);
       setDeletingIds(prev => {
@@ -146,9 +117,51 @@ export const HistoryPage = () => {
     }
   };
 
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const publishArticle = async (articleId: string, site: WPWebsite) => {
+    setIsPublishing(true);
+    try {
+      const article = articles.find(a => a.id === articleId);
+      if (!article) return;
+
+      const response = await window.fetch("/api/publish-wp", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          siteUrl: site.siteUrl,
+          siteUser: site.username,
+          sitePass: site.appPassword,
+          article: {
+            title: article.title,
+            content: article.content,
+            metaDescription: article.metaDescription,
+            slug: article.slug
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error("Publish failed");
+      const wpPost = await response.json();
+      
+      const current = JSON.parse(localStorage.getItem('articles') || '[]');
+      const updated = current.map((a: any) => a.id === articleId ? {
+        ...a,
+        status: 'published',
+        wpPostId: wpPost.id.toString(),
+        wpUrl: wpPost.link
+      } : a);
+      localStorage.setItem('articles', JSON.stringify(updated));
+      setArticles(updated);
+    } catch (err) {
+      console.error("Publish error:", err);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleBulkPublish = async () => {
-    if (!auth.currentUser || selectedIds.size === 0) return;
-    const uid = auth.currentUser.uid;
+    if (selectedIds.size === 0) return;
     setIsProcessing(true);
     const ids = Array.from(selectedIds) as string[];
     
@@ -160,30 +173,33 @@ export const HistoryPage = () => {
         const site = websites.find(s => s.id === article.websiteId);
         if (!site) continue;
 
-        await publishToWordPress(uid, id, {
-          siteUrl: site.siteUrl,
-          siteUser: site.username,
-          sitePass: site.appPassword
-        });
+        await publishArticle(id, site);
       }
     } catch (err) {
       console.error("Bulk publish error:", err);
     } finally {
+      setIsProcessing(true);
       setIsProcessing(false);
     }
   };
 
   const handleManualAdd = async (e: FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) return;
     setIsProcessing(true);
     try {
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'articles'), {
+      const newArticle: Article = {
+        id: Math.random().toString(36).substring(7),
         ...manualForm,
-        createdAt: serverTimestamp(),
+        createdAt: Date.now(),
         slug: manualForm.title.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, ''),
         metaDescription: manualForm.content.substring(0, 160) + '...',
-      });
+      } as Article;
+
+      const current = JSON.parse(localStorage.getItem('articles') || '[]');
+      const updated = [newArticle, ...current];
+      localStorage.setItem('articles', JSON.stringify(updated));
+      setArticles(updated);
+
       setIsAddingManual(false);
       setManualForm({ title: '', keyword: '', content: '', status: 'draft', websiteId: '' });
     } catch (err) {
@@ -287,7 +303,7 @@ export const HistoryPage = () => {
                 <div className="flex items-center gap-3 mb-1">
                    <StatusBadge status={article.status} />
                    <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                     {article.createdAt ? formatDate((article.createdAt as any).toDate()) : 'INITIATED'}
+                     {article.createdAt ? new Date(article.createdAt as any).toLocaleDateString() : 'INITIATED'}
                    </span>
                    {article.websiteId && websitesMap[article.websiteId] && (
                      <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest flex items-center gap-1">
@@ -318,14 +334,9 @@ export const HistoryPage = () => {
                 {article.status !== 'published' && article.websiteId && (
                   <button 
                     onClick={() => {
-                      const site = websitesMap[article.websiteId];
-                      if (site && auth.currentUser) {
-                        const uid = auth.currentUser.uid;
-                        publishToWordPress(uid, article.id, {
-                          siteUrl: site.siteUrl,
-                          siteUser: site.username,
-                          sitePass: site.appPassword
-                        });
+                      const site = websitesMap[article.websiteId!];
+                      if (site) {
+                        publishArticle(article.id, site);
                       }
                     }}
                     className="p-3 bg-primary/10 border border-primary/20 text-primary rounded hover:bg-primary hover:text-black transition-all"
@@ -645,13 +656,8 @@ export const HistoryPage = () => {
                     <button 
                       onClick={() => {
                         const site = websitesMap[selectedArticle.websiteId!];
-                        if (site && auth.currentUser) {
-                          const uid = auth.currentUser.uid;
-                          publishToWordPress(uid, selectedArticle.id, {
-                            siteUrl: site.siteUrl,
-                            siteUser: site.username,
-                            sitePass: site.appPassword
-                          });
+                        if (site) {
+                          publishArticle(selectedArticle.id, site);
                         }
                       }}
                       className="px-8 py-3 bg-primary text-black rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
@@ -672,7 +678,7 @@ export const HistoryPage = () => {
            <span>Filter Success Rate: {Math.round((articles.filter(a => a.status === 'published').length / (articles.length || 1)) * 100)}%</span>
            <span>Filtered View: {filteredArticles.length} Nodes</span>
         </div>
-        <div className="italic">Auth Instance: {auth.currentUser?.email} [READ_WRITE_ACTIVE]</div>
+        <div className="italic">Data Sync: [LOCAL_STORAGE_ACTIVE]</div>
       </div>
     </div>
   );

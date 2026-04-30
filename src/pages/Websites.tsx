@@ -1,6 +1,4 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { db, auth } from '../lib/firebase';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { WPWebsite } from '../types';
 import { Globe, Plus, Trash2, ShieldCheck, Loader2, Link2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,16 +12,12 @@ export const WebsitesPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const q = query(collection(db, 'users', auth.currentUser.uid, 'websites'));
-    return onSnapshot(q, (snapshot) => {
-      setSites(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as WPWebsite)));
-    });
+    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
+    setSites(savedSites);
   }, []);
 
   const addWebsite = async (e: FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) return;
     setIsTesting(true);
     setError('');
 
@@ -52,13 +46,18 @@ export const WebsitesPage = () => {
         throw new Error(data.error || "Invalid credentials or REST API disabled. Make sure to use an Application Password.");
       }
 
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'websites'), {
+      const newSite: WPWebsite = {
+        id: Math.random().toString(36).substring(7),
         name: formData.name,
         siteUrl: url,
         username: formData.user,
         appPassword: formData.pass,
-        createdAt: serverTimestamp()
-      });
+        createdAt: Date.now()
+      };
+
+      const updatedSites = [...sites, newSite];
+      setSites(updatedSites);
+      localStorage.setItem('websites', JSON.stringify(updatedSites));
 
       setFormData({ name: '', url: '', user: '', pass: '' });
       setIsAdding(false);
@@ -67,6 +66,12 @@ export const WebsitesPage = () => {
     } finally {
       setIsTesting(false);
     }
+  };
+
+  const removeSite = (id: string) => {
+    const updatedSites = sites.filter(s => s.id !== id);
+    setSites(updatedSites);
+    localStorage.setItem('websites', JSON.stringify(updatedSites));
   };
 
   return (
@@ -153,7 +158,7 @@ export const WebsitesPage = () => {
                 <button
                   type="submit"
                   disabled={isTesting}
-                  className="px-10 py-5 bg-primary text-black rounded font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-transform active:scale-95 disabled:opacity-20 flex items-center gap-3 shadow-[0_0_20px_rgba(192,255,0,0.1)]"
+                  className="px-10 py-5 bg-primary text-black rounded font-black text-xs uppercase tracking-widest hover:scale-[1.02] transition-transform active:scale-95 disabled:opacity-20 flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(192,255,0,0.1)]"
                 >
                   {isTesting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {isTesting ? "VALIDATING..." : "AUTHORIZE LINK"}
@@ -168,7 +173,7 @@ export const WebsitesPage = () => {
         {sites.length === 0 ? (
           <div className="col-span-full py-24 border border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center gap-4">
             <Globe className="w-12 h-12 text-white/10" />
-            <p className="text-sm font-black text-white/20 uppercase tracking-[0.3em] italic text-center">No destitation nodes connected</p>
+            <p className="text-sm font-black text-white/20 uppercase tracking-[0.3em] italic text-center">No destination nodes connected</p>
           </div>
         ) : (
           sites.map((site) => (
@@ -184,7 +189,7 @@ export const WebsitesPage = () => {
                   <Globe className="w-7 h-7" />
                 </div>
                 <button
-                  onClick={() => deleteDoc(doc(db, 'users', auth.currentUser!.uid, 'websites', site.id))}
+                  onClick={() => removeSite(site.id)}
                   className="p-3 text-white/20 hover:text-red-500 hover:bg-black/20 rounded opacity-0 group-hover:opacity-100 transition-all"
                 >
                   <Trash2 className="w-5 h-5" />

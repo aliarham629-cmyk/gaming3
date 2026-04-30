@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { db, auth } from '../lib/firebase';
-import { collection, query, onSnapshot, getDocs, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { WPWebsite, APIKey } from '../types';
 import { Zap, Play, Loader2, AlertCircle, CheckCircle2, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,25 +18,30 @@ export const KeywordsPage = () => {
     const savedSiteId = localStorage.getItem('last_site_id');
     if (savedSiteId) setSelectedSiteId(savedSiteId);
 
-    if (!auth.currentUser) return;
-    
-    const sitesQuery = query(collection(db, 'users', auth.currentUser.uid, 'websites'));
-    onSnapshot(sitesQuery, (snap) => setSites(snap.docs.map(d => ({ id: d.id, ...d.data() } as WPWebsite))));
+    const savedKeywords = localStorage.getItem('last_keywords');
+    if (savedKeywords) setKeywords(savedKeywords);
 
-    const apiQuery = query(collection(db, 'users', auth.currentUser.uid, 'apiKeys'));
-    onSnapshot(apiQuery, (snap) => setApiKeys(snap.docs.map(d => ({ id: d.id, ...d.data() } as APIKey))));
+    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
+    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
+    setSites(savedSites);
+    setApiKeys(savedKeys);
   }, []);
+
+  const onKeywordsChange = (val: string) => {
+    setKeywords(val);
+    localStorage.setItem('last_keywords', val);
+  };
 
   const onSiteChange = (id: string) => {
     setSelectedSiteId(id);
     localStorage.setItem('last_site_id', id);
   };
 
-  const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 5));
+  const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 10));
 
   const startGeneration = async () => {
     const kwList = keywords.split('\n').map(k => k.trim()).filter(k => k !== '');
-    if (kwList.length === 0 || !selectedSiteId || !auth.currentUser) return;
+    if (kwList.length === 0 || !selectedSiteId) return;
     
     const dbKeys = apiKeys.filter(k => k.status === 'active');
     
@@ -64,12 +67,6 @@ export const KeywordsPage = () => {
     setLogs([]);
 
     try {
-      const batchRef = await addDoc(collection(db, 'users', auth.currentUser.uid, 'batches'), {
-        keywords: kwList,
-        status: 'processing',
-        createdAt: serverTimestamp()
-      });
-
       let currentKeyIndex = 0;
 
       for (let i = 0; i < kwList.length; i++) {
@@ -84,9 +81,7 @@ export const KeywordsPage = () => {
           }
           
           await generateAndPublish({
-            userId: auth.currentUser.uid,
             websiteId: selectedSiteId,
-            batchId: batchRef.id,
             apiKey: apiKey.key!,
             keyword,
             siteUrl: selectedSite.siteUrl,
@@ -96,13 +91,13 @@ export const KeywordsPage = () => {
           addLog(`SUCCESS: Published "${keyword}"`);
 
           if (apiKey.id !== 'system-default') {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid, 'apiKeys', apiKey.id!), {
-              usageCount: (apiKey.usageCount || 0) + 1
-            });
+            const updatedKeys = apiKeys.map(k => k.id === apiKey.id ? { ...k, usageCount: (k.usageCount || 0) + 1 } : k);
+            setApiKeys(updatedKeys);
+            localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
           }
 
         } catch (err: any) {
-          addLog(`FAIL: "${keyword}"`);
+          addLog(`FAIL: "${keyword}" - ${err.message}`);
           console.error(`Article error [${keyword}]:`, err);
           
           if (err.message.includes('429') || err.message.toLowerCase().includes('quota')) {
@@ -117,11 +112,10 @@ export const KeywordsPage = () => {
         }
       }
 
-      await updateDoc(batchRef, { status: 'completed' });
       addLog(`SIGNAL: Batch sequence completed.`);
     } catch (err: any) {
-      console.error("Batch creation failed:", err);
-      alert("Failed to start batch. Check permissions.");
+      console.error("Batch processing failed:", err);
+      alert("Failed to process batch.");
     } finally {
       setIsProcessing(false);
     }
@@ -144,7 +138,7 @@ export const KeywordsPage = () => {
             <textarea
               rows={12}
               value={keywords}
-              onChange={e => setKeywords(e.target.value)}
+              onChange={e => onKeywordsChange(e.target.value)}
               placeholder="best gaming laptops 2026&#10;gta 6 release date leaks&#10;pubg mobile tips"
               disabled={isProcessing}
               className="w-full bg-black/40 px-6 py-5 rounded-2xl border border-white/5 focus:outline-none focus:border-primary/40 text-white font-mono text-sm leading-relaxed transition-all placeholder:text-white/10"
@@ -181,15 +175,15 @@ export const KeywordsPage = () => {
                   />
                 </div>
 
-                <div className="space-y-3 font-mono text-[10px] uppercase font-black">
+                <div className="space-y-3 font-mono text-[10px] uppercase font-black max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                   {logs.map((log, i) => (
                     <div key={i} className={cn(
                       "flex items-start gap-4 p-3 rounded bg-black/40 border-l-2",
                       log.startsWith('FAIL') ? "border-red-500 text-red-400" : 
                       log.startsWith('SUCCESS') ? "border-primary text-primary" : "border-white/10 text-white/40"
                     )}>
-                      <span className="opacity-40">[{new Date().toLocaleTimeString()}]</span>
-                      {log}
+                      <span className="opacity-40 whitespace-nowrap">[{new Date().toLocaleTimeString()}]</span>
+                      <span className="break-all">{log}</span>
                     </div>
                   ))}
                 </div>

@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { db, auth } from '../lib/firebase';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { APIKey } from '../types';
 import { Key, Plus, Trash2, CheckCircle2, XCircle, Loader2, Info, ExternalLink, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -14,11 +12,8 @@ export const APIsPage = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const q = query(collection(db, 'users', auth.currentUser.uid, 'apiKeys'));
-    return onSnapshot(q, (snapshot) => {
-      setKeys(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as APIKey)));
-    });
+    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
+    setKeys(savedKeys);
   }, []);
 
   const testKey = async (key: string) => {
@@ -44,23 +39,30 @@ export const APIsPage = () => {
   };
 
   const addKey = async () => {
-    if (!newKey || !auth.currentUser) return;
+    if (!newKey) return;
     const isValid = await testKey(newKey);
     if (isValid) {
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'apiKeys'), {
+      const newKeyObj: APIKey = {
+        id: Math.random().toString(36).substring(7),
         key: newKey,
         status: 'active',
         usageCount: 0,
-        createdAt: serverTimestamp()
-      });
+        createdAt: Date.now()
+      };
+      
+      const updatedKeys = [...keys, newKeyObj];
+      setKeys(updatedKeys);
+      localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
+      
       setNewKey('');
       setTestResult(null);
     }
   };
 
-  const removeKey = async (id: string) => {
-    if (!auth.currentUser) return;
-    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'apiKeys', id));
+  const removeKey = (id: string) => {
+    const updatedKeys = keys.filter(k => k.id !== id);
+    setKeys(updatedKeys);
+    localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
   };
 
   return (
@@ -86,9 +88,8 @@ export const APIsPage = () => {
             <h3 className="text-sm font-black uppercase tracking-widest text-primary">System Expert Link Protocol</h3>
           </div>
           <p className="text-xs text-white/60 font-bold leading-relaxed mb-6 max-w-xl">
-            Detected Session: <span className="text-white italic">{auth.currentUser?.email}</span>. 
-            To bypass shared quotas and use your personal Gemini model limits, link your unique API core. 
-            Once linked, this app will use your "Expert Session" automatically.
+            This module manages your personal Gemini AI API keys. 
+            By linking your own key, you benefit from personal usage limits and high-speed generation.
           </p>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
             <a 

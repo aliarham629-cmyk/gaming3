@@ -1,46 +1,7 @@
 import { GoogleGenAI, Type as SchemaType } from "@google/genai";
-import { db, auth } from "./firebase";
-import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 
 export interface GenerationParams {
-  userId: string;
   websiteId: string;
-  batchId: string;
   apiKey: string;
   keyword: string;
   siteUrl: string;
@@ -48,32 +9,40 @@ export interface GenerationParams {
   sitePass: string;
 }
 
+const getArticles = () => JSON.parse(localStorage.getItem('articles') || '[]');
+const saveArticles = (articles: any[]) => localStorage.setItem('articles', JSON.stringify(articles));
+
 export async function generateAndPublish(params: GenerationParams) {
-  const { userId, websiteId, batchId, apiKey, keyword, siteUrl, siteUser, sitePass } = params;
+  const { websiteId, apiKey, keyword, siteUrl, siteUser, sitePass } = params;
   
-  const articlePath = `users/${userId}/articles`;
-  let articleRef;
-  
-  try {
-    articleRef = await addDoc(collection(db, articlePath), {
+  const articleId = Math.random().toString(36).substring(7);
+    const newArticle = {
+      id: articleId,
       keyword,
       title: `Processing: ${keyword}`,
       content: '',
       status: 'draft',
       websiteId,
-      batchId,
-      createdAt: serverTimestamp(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, articlePath);
-    return;
-  }
+      createdAt: Date.now(),
+    };
+
+  const articles = getArticles();
+  articles.push(newArticle);
+  saveArticles(articles);
+
+  const updateArticleLocally = (id: string, updates: any) => {
+    const current = getArticles();
+    const index = current.findIndex((a: any) => a.id === id);
+    if (index !== -1) {
+      current[index] = { ...current[index], ...updates, updatedAt: new Date().toISOString() };
+      saveArticles(current);
+    }
+  };
 
   try {
     const ai = new GoogleGenAI({ apiKey });
 
     const generateWithProxy = async (prompt: string, schema: any) => {
-      // Always replace keyword in prompt if placeholder exists
       const finalPrompt = prompt.replace("${keyword}", keyword);
       
       if (apiKey === "system-default" || !apiKey) {
@@ -116,8 +85,7 @@ export async function generateAndPublish(params: GenerationParams) {
     );
 
     const seoData = JSON.parse(seoDataRaw);
-
-    await updateDoc(articleRef, {
+    updateArticleLocally(articleId, {
       title: seoData.title,
       metaDescription: seoData.metaDescription,
       slug: seoData.slug,
@@ -147,52 +115,12 @@ export async function generateAndPublish(params: GenerationParams) {
     );
 
     const contentData = JSON.parse(contentDataRaw);
-
-    await updateDoc(articleRef, {
+    updateArticleLocally(articleId, {
       content: contentData.contentHtml,
       schemaMarkup: contentData.schemaMarkup,
-      status: 'draft' // Mark as draft once content is ready
     });
 
     // 3. Publish to WordPress
-    await publishToWordPress(userId, articleRef.id, {
-      siteUrl,
-      siteUser,
-      sitePass
-    });
-
-    return { success: true, articleId: articleRef.id };
-
-  } catch (error: any) {
-    console.error("Critical Failure:", error);
-    if (articleRef) {
-      try {
-        await updateDoc(articleRef, {
-          status: 'error',
-          error: error.message || "Unknown error",
-        });
-      } catch (e) {
-        console.error("Could not update error state in Firestore:", e);
-      }
-    }
-    throw error;
-  }
-}
-
-export async function publishToWordPress(
-  userId: string, 
-  articleId: string, 
-  site: { siteUrl: string; siteUser: string; sitePass: string }
-) {
-  const articleRef = doc(db, 'users', userId, 'articles', articleId);
-  const { siteUrl, siteUser, sitePass } = site;
-  
-  try {
-    const articleDoc = await getDoc(articleRef);
-    if (!articleDoc.exists()) throw new Error("Article document not found in system.");
-    const article = articleDoc.data();
-
-    // Use Server Proxy to bypass CORS
     const proxyResponse = await window.fetch("/api/publish-wp", {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -201,10 +129,10 @@ export async function publishToWordPress(
         siteUser,
         sitePass,
         article: {
-          title: article.title,
-          content: article.content,
-          metaDescription: article.metaDescription,
-          slug: article.slug
+          title: seoData.title,
+          content: contentData.contentHtml,
+          metaDescription: seoData.metaDescription,
+          slug: seoData.slug
         }
       })
     });
@@ -215,48 +143,32 @@ export async function publishToWordPress(
     }
 
     const wpPost = await proxyResponse.json();
-
-    await updateDoc(articleRef, {
+    updateArticleLocally(articleId, {
       status: 'published',
       wpPostId: wpPost.id.toString(),
       wpUrl: wpPost.link,
-      updatedAt: serverTimestamp(),
     });
 
-    return wpPost;
+    return { success: true, articleId };
+
   } catch (error: any) {
-    console.error("Publishing Failure:", error);
-    await updateDoc(articleRef, {
+    console.error("Critical Failure:", error);
+    updateArticleLocally(articleId, {
       status: 'error',
-      error: `Publishing Error: ${error.message || "Unknown failure"}`,
-      updatedAt: serverTimestamp(),
+      error: error.message || "Unknown error",
     });
     throw error;
   }
 }
 
-export async function deleteArticle(userId: string, articleId: string) {
-  const articleRef = doc(db, 'users', userId, 'articles', articleId);
-  try {
-    await deleteDoc(articleRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, articleRef.path);
-  }
+export async function deleteArticle(articleId: string) {
+  const current = getArticles();
+  const updated = current.filter((a: any) => a.id !== articleId);
+  saveArticles(updated);
 }
 
-export async function bulkDeleteArticles(userId: string, articleIds: string[]) {
-  const batch = writeBatch(db);
-  const paths: string[] = [];
-  
-  articleIds.forEach(id => {
-    const articleRef = doc(db, 'users', userId, 'articles', id);
-    batch.delete(articleRef);
-    paths.push(articleRef.path);
-  });
-
-  try {
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, paths.join(', '));
-  }
+export async function bulkDeleteArticles(articleIds: string[]) {
+  const current = getArticles();
+  const updated = current.filter((a: any) => !articleIds.includes(a.id));
+  saveArticles(updated);
 }

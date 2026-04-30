@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, auth } from '../lib/firebase';
-import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
-import { Zap, FileText, Globe, Key, TrendingUp, LayoutGrid, Clock, ArrowUpRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Zap, ArrowUpRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 
@@ -23,39 +20,22 @@ export const DashboardPage = () => {
       .then(data => setHasSystemKey(data.hasSystemKey))
       .catch(() => setHasSystemKey(false));
 
-    if (!auth.currentUser) return;
-    const uid = auth.currentUser.uid;
+    // Load from local storage
+    const savedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
+    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
+    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
 
-    const unsubArticles = onSnapshot(collection(db, 'users', uid, 'articles'), (snap) => {
-      setStats(prev => ({ 
-        ...prev, 
-        articlesPublished: snap.docs.filter(d => d.data().status === 'published').length,
-        totalKeywords: snap.size
-      }));
-      setRecentArticles(snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => {
-          const aTime = a.createdAt?.toMillis() || 0;
-          const bTime = b.createdAt?.toMillis() || 0;
-          return bTime - aTime;
-        })
-        .slice(0, 5)
-      );
+    setStats({
+      totalKeywords: savedArticles.length,
+      articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
+      connectedSites: savedSites.length,
+      activeApiKeys: savedKeys.filter((k: any) => k.status === 'active').length,
     });
 
-    const unsubSites = onSnapshot(collection(db, 'users', uid, 'websites'), (snap) => {
-      setStats(prev => ({ ...prev, connectedSites: snap.size }));
-    });
-
-    const unsubKeys = onSnapshot(collection(db, 'users', uid, 'apiKeys'), (snap) => {
-      setStats(prev => ({ ...prev, activeApiKeys: snap.docs.filter(d => d.data().status === 'active').length }));
-    });
-
-    return () => {
-      unsubArticles();
-      unsubSites();
-      unsubKeys();
-    };
+    setRecentArticles(savedArticles
+      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 5)
+    );
   }, []);
 
   return (
@@ -70,7 +50,7 @@ export const DashboardPage = () => {
           <div className="w-[1px] h-8 bg-white/10"></div>
           <div className="flex flex-col">
             <span className="text-[10px] font-black text-white/40 tracking-widest uppercase">Active Node</span>
-            <span className="text-sm font-bold uppercase">Region: ASIA-SE1</span>
+            <span className="text-sm font-bold uppercase">Region: LOCALHOST</span>
           </div>
         </div>
         <Link 
@@ -106,7 +86,7 @@ export const DashboardPage = () => {
                 <div className="py-12 text-center text-white/20 uppercase font-black italic tracking-widest">No activity found</div>
               ) : (
                 recentArticles.map((article, i) => (
-                  <div key={article.id} className="flex items-center gap-4 group">
+                  <div key={article.id || i} className="flex items-center gap-4 group">
                     <span className="text-xs font-mono text-white/40">[{String(i + 1).padStart(2, '0')}]</span>
                     <div className="flex-1">
                       <p className="text-sm font-bold group-hover:text-primary transition-colors line-clamp-1">{article.title || article.keyword}</p>
@@ -118,7 +98,7 @@ export const DashboardPage = () => {
                           {article.status}
                         </span>
                         <span className="text-[9px] text-white/20 uppercase font-bold">
-                          {article.createdAt?.toDate().toLocaleTimeString()}
+                          {new Date(article.createdAt).toLocaleTimeString()}
                         </span>
                       </div>
                     </div>
@@ -134,13 +114,12 @@ export const DashboardPage = () => {
             </div>
           </div>
 
-          {/* RECENT PUBLISHINGS MINI PANEL (Optional or redundant but matching design) */}
           <div className="flex flex-col gap-4">
             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/40 px-2">System Footprint</h3>
             <div className="space-y-4 bg-white/5 p-6 rounded-2xl border border-white/5">
               <div>
-                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Database</p>
-                <p className="text-sm font-bold text-primary italic">STABLE_CONNECTED</p>
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Storage</p>
+                <p className="text-sm font-bold text-primary italic">LOCAL_BROWSER_READY</p>
               </div>
               <div className="w-full h-[1px] bg-white/10"></div>
               <div>
@@ -163,7 +142,7 @@ export const DashboardPage = () => {
         {/* FOOTER DATA */}
         <div className="mt-auto flex justify-between items-center text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">
           <div>GAMING AI SYSTEM V.2.04B</div>
-          <div>DATABASE CONNECTION: STABLE [FIRESTORE]</div>
+          <div>DATABASE CONNECTION: LOCAL_STORAGE</div>
           <div>LOCAL TIME: {new Date().toLocaleTimeString()}</div>
         </div>
       </div>
