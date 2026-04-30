@@ -8,8 +8,8 @@ import { KeywordsPage } from './pages/Keywords';
 import { APIsPage } from './pages/APIs';
 import { WebsitesPage } from './pages/Websites';
 import { HistoryPage } from './pages/History';
-import { auth, googleProvider } from './lib/firebase';
-import { signInAnonymously, onAuthStateChanged, signInWithPopup } from 'firebase/auth';
+import { auth } from './lib/firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 // Pages
 const Dashboard = DashboardPage;
@@ -116,26 +116,11 @@ export default function App() {
         await signInAnonymously(auth);
       } catch (err: any) {
         console.error("Firebase Auth Error:", err);
-        setAuthError("Anonymous auth disabled. Please use Google Login or contact admin.");
+        setAuthError("CRITICAL: Anonymous Authentication is disabled in your Firebase Console. Please enable it in 'Build > Authentication > Sign-in method'.");
       }
     } else {
       setError(true);
       setTimeout(() => setError(false), 2000);
-    }
-  };
-
-  const handleGoogleAuth = async () => {
-    try {
-      setAuthError(null);
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        localStorage.setItem('app_authorized', 'true');
-        setIsAuthorized(true);
-        setIsFirebaseReady(true);
-      }
-    } catch (err: any) {
-      console.error("Google Auth Error:", err);
-      setAuthError(err.message || "Google Sign-In failed.");
     }
   };
 
@@ -183,20 +168,6 @@ export default function App() {
                   Initialize Portal
                 </button>
               </form>
-
-              <div className="flex items-center gap-4 py-2">
-                <div className="flex-1 h-[1px] bg-white/5"></div>
-                <span className="text-[8px] font-black text-white/10 uppercase tracking-widest">OR SECURE BYPASS</span>
-                <div className="flex-1 h-[1px] bg-white/5"></div>
-              </div>
-
-              <button 
-                onClick={handleGoogleAuth}
-                className="w-full py-4 rounded-xl border border-white/5 bg-white/[0.02] text-[10px] font-black uppercase tracking-[0.15em] text-white/40 hover:bg-white/5 hover:text-white transition-all flex items-center justify-center gap-3"
-              >
-                <div className="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center text-[8px] font-black">G</div>
-                Authorize with Google
-              </button>
 
               {authError && (
                 <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
