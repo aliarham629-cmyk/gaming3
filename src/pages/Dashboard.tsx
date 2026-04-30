@@ -20,22 +20,27 @@ export const DashboardPage = () => {
       .then(data => setHasSystemKey(data.hasSystemKey))
       .catch(() => setHasSystemKey(false));
 
-    // Load from local storage
-    const savedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
-    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
-    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
+    // Load from server database
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => {
+        const savedArticles = data.articles || [];
+        const savedSites = data.websites || [];
+        const savedKeys = data.apiKeys || [];
 
-    setStats({
-      totalKeywords: savedArticles.length,
-      articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
-      connectedSites: savedSites.length,
-      activeApiKeys: savedKeys.filter((k: any) => k.status === 'active').length,
-    });
+        setStats({
+          totalKeywords: savedArticles.length,
+          articlesPublished: savedArticles.filter((a: any) => a.status === 'published').length,
+          connectedSites: savedSites.length,
+          activeApiKeys: savedKeys.filter((k: any) => k.status === 'active').length,
+        });
 
-    setRecentArticles(savedArticles
-      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-      .slice(0, 5)
-    );
+        setRecentArticles(savedArticles
+          .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+          .slice(0, 5)
+        );
+      })
+      .catch(err => console.error("Failed to load dashboard data:", err));
   }, []);
 
   return (

@@ -29,11 +29,13 @@ export const HistoryPage = () => {
   });
 
   useEffect(() => {
-    const savedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
-    setArticles(savedArticles);
-
-    const savedWebsites = JSON.parse(localStorage.getItem('websites') || '[]');
-    setWebsites(savedWebsites);
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => {
+        setArticles(data.articles || []);
+        setWebsites(data.websites || []);
+      })
+      .catch(err => console.error("Failed to load history data:", err));
   }, []);
 
   const filteredArticles = useMemo(() => {
@@ -95,8 +97,8 @@ export const HistoryPage = () => {
         await bulkDeleteArticles(ids);
       }
       
-      const updatedArticles = JSON.parse(localStorage.getItem('articles') || '[]');
-      setArticles(updatedArticles);
+      const dbResponse = await fetch('/api/db').then(res => res.json());
+      setArticles(dbResponse.articles || []);
       
       const nextSelected = new Set((Array.from(selectedIds) as string[]).filter(id => !ids.includes(id)));
       setSelectedIds(nextSelected);
@@ -144,14 +146,19 @@ export const HistoryPage = () => {
       if (!response.ok) throw new Error("Publish failed");
       const wpPost = await response.json();
       
-      const current = JSON.parse(localStorage.getItem('articles') || '[]');
-      const updated = current.map((a: any) => a.id === articleId ? {
+      const db = await fetch('/api/db').then(res => res.json());
+      const updated = db.articles.map((a: any) => a.id === articleId ? {
         ...a,
         status: 'published',
         wpPostId: wpPost.id.toString(),
         wpUrl: wpPost.link
       } : a);
-      localStorage.setItem('articles', JSON.stringify(updated));
+      db.articles = updated;
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(db)
+      });
       setArticles(updated);
     } catch (err) {
       console.error("Publish error:", err);
@@ -195,10 +202,14 @@ export const HistoryPage = () => {
         metaDescription: manualForm.content.substring(0, 160) + '...',
       } as Article;
 
-      const current = JSON.parse(localStorage.getItem('articles') || '[]');
-      const updated = [newArticle, ...current];
-      localStorage.setItem('articles', JSON.stringify(updated));
-      setArticles(updated);
+      const db = await fetch('/api/db').then(res => res.json());
+      db.articles = [newArticle, ...(db.articles || [])];
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(db)
+      });
+      setArticles(db.articles);
 
       setIsAddingManual(false);
       setManualForm({ title: '', keyword: '', content: '', status: 'draft', websiteId: '' });
@@ -678,7 +689,7 @@ export const HistoryPage = () => {
            <span>Filter Success Rate: {Math.round((articles.filter(a => a.status === 'published').length / (articles.length || 1)) * 100)}%</span>
            <span>Filtered View: {filteredArticles.length} Nodes</span>
         </div>
-        <div className="italic">Data Sync: [LOCAL_STORAGE_ACTIVE]</div>
+        <div className="italic">Data Sync: [SERVER_STORAGE_ACTIVE]</div>
       </div>
     </div>
   );

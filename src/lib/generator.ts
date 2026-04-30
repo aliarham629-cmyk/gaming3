@@ -9,8 +9,12 @@ export interface GenerationParams {
   sitePass: string;
 }
 
-const getArticles = () => JSON.parse(localStorage.getItem('articles') || '[]');
-const saveArticles = (articles: any[]) => localStorage.setItem('articles', JSON.stringify(articles));
+const getDb = () => fetch('/api/db').then(res => res.json());
+const saveDb = (data: any) => fetch('/api/db', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(data)
+});
 
 export async function generateAndPublish(params: GenerationParams) {
   const { websiteId, apiKey, keyword, siteUrl, siteUser, sitePass } = params;
@@ -26,16 +30,16 @@ export async function generateAndPublish(params: GenerationParams) {
       createdAt: Date.now(),
     };
 
-  const articles = getArticles();
-  articles.push(newArticle);
-  saveArticles(articles);
+  const db = await getDb();
+  db.articles.push(newArticle);
+  await saveDb(db);
 
-  const updateArticleLocally = (id: string, updates: any) => {
-    const current = getArticles();
-    const index = current.findIndex((a: any) => a.id === id);
+  const updateArticleLocally = async (id: string, updates: any) => {
+    const currentDb = await getDb();
+    const index = currentDb.articles.findIndex((a: any) => a.id === id);
     if (index !== -1) {
-      current[index] = { ...current[index], ...updates, updatedAt: new Date().toISOString() };
-      saveArticles(current);
+      currentDb.articles[index] = { ...currentDb.articles[index], ...updates, updatedAt: Date.now() };
+      await saveDb(currentDb);
     }
   };
 
@@ -162,13 +166,13 @@ export async function generateAndPublish(params: GenerationParams) {
 }
 
 export async function deleteArticle(articleId: string) {
-  const current = getArticles();
-  const updated = current.filter((a: any) => a.id !== articleId);
-  saveArticles(updated);
+  const db = await getDb();
+  db.articles = db.articles.filter((a: any) => a.id !== articleId);
+  await saveDb(db);
 }
 
 export async function bulkDeleteArticles(articleIds: string[]) {
-  const current = getArticles();
-  const updated = current.filter((a: any) => !articleIds.includes(a.id));
-  saveArticles(updated);
+  const db = await getDb();
+  db.articles = db.articles.filter((a: any) => !articleIds.includes(a.id));
+  await saveDb(db);
 }

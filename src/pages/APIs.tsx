@@ -12,8 +12,10 @@ export const APIsPage = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
-    setKeys(savedKeys);
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => setKeys(data.apiKeys || []))
+      .catch(err => console.error("DB Load Error:", err));
   }, []);
 
   const testKey = async (key: string) => {
@@ -23,7 +25,7 @@ export const APIsPage = () => {
       const ai = new GoogleGenAI({ apiKey: key });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: "Hello",
+        contents: [{ role: 'user', parts: [{ text: "ping" }] }],
       });
       if (response.text) {
         setTestResult({ success: true, message: "Connection successful!" });
@@ -50,19 +52,36 @@ export const APIsPage = () => {
         createdAt: Date.now()
       };
       
-      const updatedKeys = [...keys, newKeyObj];
-      setKeys(updatedKeys);
-      localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
-      
-      setNewKey('');
-      setTestResult(null);
+      try {
+        const db = await fetch('/api/db').then(res => res.json());
+        db.apiKeys = [...(db.apiKeys || []), newKeyObj];
+        await fetch('/api/db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(db)
+        });
+        setKeys(db.apiKeys);
+        setNewKey('');
+        setTestResult(null);
+      } catch (err) {
+        console.error("Save Error:", err);
+      }
     }
   };
 
-  const removeKey = (id: string) => {
-    const updatedKeys = keys.filter(k => k.id !== id);
-    setKeys(updatedKeys);
-    localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
+  const removeKey = async (id: string) => {
+    try {
+      const db = await fetch('/api/db').then(res => res.json());
+      db.apiKeys = db.apiKeys.filter((k: any) => k.id !== id);
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(db)
+      });
+      setKeys(db.apiKeys);
+    } catch (err) {
+      console.error("Delete Error:", err);
+    }
   };
 
   return (

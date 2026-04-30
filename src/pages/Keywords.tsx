@@ -21,10 +21,13 @@ export const KeywordsPage = () => {
     const savedKeywords = localStorage.getItem('last_keywords');
     if (savedKeywords) setKeywords(savedKeywords);
 
-    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
-    const savedKeys = JSON.parse(localStorage.getItem('apiKeys') || '[]');
-    setSites(savedSites);
-    setApiKeys(savedKeys);
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => {
+        setSites(data.websites || []);
+        setApiKeys(data.apiKeys || []);
+      })
+      .catch(err => console.error("Failed to load setup context:", err));
   }, []);
 
   const onKeywordsChange = (val: string) => {
@@ -91,9 +94,14 @@ export const KeywordsPage = () => {
           addLog(`SUCCESS: Published "${keyword}"`);
 
           if (apiKey.id !== 'system-default') {
-            const updatedKeys = apiKeys.map(k => k.id === apiKey.id ? { ...k, usageCount: (k.usageCount || 0) + 1 } : k);
-            setApiKeys(updatedKeys);
-            localStorage.setItem('apiKeys', JSON.stringify(updatedKeys));
+            const db = await fetch('/api/db').then(res => res.json());
+            db.apiKeys = db.apiKeys.map((k: any) => k.id === apiKey.id ? { ...k, usageCount: (k.usageCount || 0) + 1 } : k);
+            await fetch('/api/db', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(db)
+            });
+            setApiKeys(db.apiKeys);
           }
 
         } catch (err: any) {

@@ -12,8 +12,10 @@ export const WebsitesPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const savedSites = JSON.parse(localStorage.getItem('websites') || '[]');
-    setSites(savedSites);
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(data => setSites(data.websites || []))
+      .catch(err => console.error("DB Load Error:", err));
   }, []);
 
   const addWebsite = async (e: FormEvent) => {
@@ -40,10 +42,16 @@ export const WebsitesPage = () => {
         })
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("WP Server returned non-JSON response. Check your URL and Application Password.");
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || "Invalid credentials or REST API disabled. Make sure to use an Application Password.");
+        throw new Error(data.error || "WordPress connection failed.");
       }
 
       const newSite: WPWebsite = {
@@ -55,10 +63,15 @@ export const WebsitesPage = () => {
         createdAt: Date.now()
       };
 
-      const updatedSites = [...sites, newSite];
-      setSites(updatedSites);
-      localStorage.setItem('websites', JSON.stringify(updatedSites));
+      const db = await fetch('/api/db').then(res => res.json());
+      db.websites = [...(db.websites || []), newSite];
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(db)
+      });
 
+      setSites(db.websites);
       setFormData({ name: '', url: '', user: '', pass: '' });
       setIsAdding(false);
     } catch (err: any) {
@@ -68,10 +81,19 @@ export const WebsitesPage = () => {
     }
   };
 
-  const removeSite = (id: string) => {
-    const updatedSites = sites.filter(s => s.id !== id);
-    setSites(updatedSites);
-    localStorage.setItem('websites', JSON.stringify(updatedSites));
+  const removeSite = async (id: string) => {
+    try {
+      const db = await fetch('/api/db').then(res => res.json());
+      db.websites = db.websites.filter((s: any) => s.id !== id);
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(db)
+      });
+      setSites(db.websites);
+    } catch (err) {
+      console.error("Delete Site Error:", err);
+    }
   };
 
   return (

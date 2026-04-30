@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI, Type } from "@google/genai";
+import { StorageService } from "./src/lib/storage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,25 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // --- PERSISTENCE API ---
+  app.get("/api/db", async (req, res) => {
+    try {
+      const data = await StorageService.read();
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to read database" });
+    }
+  });
+
+  app.post("/api/db", async (req, res) => {
+    try {
+      await StorageService.write(req.body);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save database" });
+    }
+  });
 
   // API Routes
   app.get("/api/health", (req, res) => {
@@ -136,12 +156,20 @@ async function startServer() {
       const authHeader = Buffer.from(`${siteUser}:${sitePass}`).toString('base64');
       const response = await fetch(`${cleanUrl}/wp-json/wp/v2/users/me`, {
         headers: {
-          'Authorization': `Basic ${authHeader}`
+          'Authorization': `Basic ${authHeader}`,
+          'User-Agent': 'GamingAI/1.0'
         }
       });
 
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return res.status(500).json({ error: "WordPress returned non-JSON response. Ensure REST API is active." });
+      }
+
       if (!response.ok) {
-        const data = await response.json();
         return res.status(response.status).json({ error: data.message || "WordPress authentication failed." });
       }
 
